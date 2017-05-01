@@ -1,0 +1,675 @@
+---
+title: "Project 2: Group 4"
+author: 'Group 4: Ben Kopchick, Aditi Seth, Yaochen Zhang, Robert Rapena'
+date: "May 1, 2017"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+getwd()
+```
+
+There has been alot of talk on Climate change and the need to reduce emissions of countries for many years now. Through this project we try to determine certain demographic factors that may be responsible for the CO2 emissions and then further try to predict emissions based on them. 
+
+The final question that we try to investigate and answer is: Can we predict a country's CO2 output per capita based on certain demographic factors?
+
+First we define all the packages that we will be using in order to answer our question.
+
+```{r, results='hide',warning=FALSE, message=FALSE}
+library(ggplot2)
+library(tidyr)
+library(doBy)
+library(reshape2)
+library(bestglm)
+library(ROCR)
+library(plm)
+library(corrplot)
+library(Hmisc)
+```
+
+Next, we load in all of our data for analysis. The demographic factors we chose to inlcude in our model as independent variables are the countries' alternative energy as a percent of the total energy, GDP, GDP growth, GDP per capita, GDP per capita growth, population, population density, population growth, urban population growth, and urban population as a percentage of the population. All of our data was collected from the The World Band DataBank and all countries available were selected. 
+
+```{r}
+alt_energy_per_tot <- data.frame(read.csv("DataNew/alt_energy_percentage_of_total.csv"))
+co2_emissions <- data.frame(read.csv("DataNew/CO2_emissions_per_capita.csv"))
+gdp <- data.frame(read.csv("DataNew/GDP.csv"))
+gdp_growth <- data.frame(read.csv("DataNew/GDP_growth.csv"))
+gdp_per_capita <- data.frame(read.csv("DataNew/GDP_per_capita.csv"))
+gdp_per_capita_growth <- data.frame(read.csv("DataNew/GDP_per_capita_growth.csv"))
+pop <- data.frame(read.csv("DataNew/Population.csv"))
+pop_den <- data.frame(read.csv("DataNew/population_density.csv"))
+pop_growth <- data.frame(read.csv("DataNew/Population_growth.csv"))
+urb_pop_growth <- data.frame(read.csv("DataNew/urban_population_growth.csv"))
+urb_pop_per <- data.frame(read.csv("DataNew/Urban_population_percentage.csv"))
+```
+
+We then did some data cleaning and rearranging for our data analysis. To do this, we convert our data to long format for R to read it correctly.
+
+```{r}
+alt_energy_per_tot_long <- gather(alt_energy_per_tot, year, alt_energy_per_tot, X1992:X2013, factor_key = TRUE)
+alt_energy_per_tot_long <- alt_energy_per_tot_long[-1]
+names(alt_energy_per_tot_long)[1] <- "country"
+head(alt_energy_per_tot_long)
+
+co2_emissions_long <- gather(co2_emissions, year, co2, X1992:X2013, factor_key = TRUE)
+co2_emissions_long <- co2_emissions_long[-1]
+names(co2_emissions_long)[1] <- "country"
+head(co2_emissions_long)
+
+gdp_long <- gather(gdp, year, gdp, X1992:X2013, factor_key = TRUE)
+gdp_long <- gdp_long[-1]
+names(gdp_long)[1] <- "country"
+head(gdp_long)
+
+gdp_growth_long <- gather(gdp_growth, year, gdp_growth, X1992:X2013, factor_key = TRUE)
+gdp_growth_long <- gdp_growth_long[-1]
+names(gdp_growth_long)[1] <- "country"
+head(gdp_growth_long)
+
+gdp_per_capita_long <- gather(gdp_per_capita, year, gdp_per_capita, X1992:X2013, factor_key = TRUE)
+gdp_per_capita_long <- gdp_per_capita_long[-1]
+names(gdp_per_capita_long)[1] <- "country"
+head(gdp_per_capita_long)
+
+gdp_per_capita_growth_long <- gather(gdp_per_capita_growth, year, gdp_per_capita_growth, X1992:X2013, factor_key = TRUE)
+gdp_per_capita_growth_long <- gdp_per_capita_growth_long[-1]
+names(gdp_per_capita_growth_long)[1] <- "country"
+head(gdp_per_capita_growth_long)
+
+pop_long <- gather(pop, year, pop, X1992:X2013, factor_key = TRUE)
+pop_long <- pop_long[-1]
+names(pop_long)[1] <- "country"
+head(pop_long)
+
+pop_den_long <- gather(pop_den, year, pop_den, X1992:X2013, factor_key = TRUE)
+pop_den_long <- pop_den_long[-1]
+names(pop_den_long)[1] <- "country"
+head(pop_den_long)
+
+pop_growth_long <- gather(pop_growth, year, pop_growth, X1992:X2013, factor_key = TRUE)
+pop_growth_long <- pop_growth_long[-1]
+names(pop_growth_long)[1] <- "country"
+head(pop_growth_long)
+
+urb_pop_growth_long <- gather(urb_pop_growth, year, urb_pop_growth, X1992:X2013, factor_key = TRUE)
+urb_pop_growth_long <- urb_pop_growth_long[-1]
+names(urb_pop_growth_long)[1] <- "country"
+head(urb_pop_growth_long)
+
+urb_pop_per_long <- gather(urb_pop_per, year, urb_pop_per, X1992:X2013, factor_key = TRUE)
+urb_pop_per_long <- urb_pop_per_long[-1]
+names(urb_pop_per_long)[1] <- "country"
+head(urb_pop_per_long)
+```
+
+We then merge our data into one data frame. 
+
+```{r}
+total_btw <- merge(alt_energy_per_tot_long,co2_emissions_long,by=c("year","country")) #Couldn't merge three files at once so we had to do this in two steps.
+total_btw2 <- merge(total_btw, gdp_long,by=c("year","country"))
+total_btw3 <- merge(total_btw2, gdp_growth_long,by=c("year","country"))
+total_btw4 <- merge(total_btw3, gdp_per_capita_long, by=c("year","country"))
+total_btw5 <- merge(total_btw4, gdp_per_capita_growth_long, by=c("year","country"))
+total_btw6 <- merge(total_btw5, pop_long, by=c("year", "country"))
+total_btw7 <- merge(total_btw6, pop_den_long, by=c("year", "country"))
+total_btw8 <- merge(total_btw7, pop_growth_long, by=c("year", "country"))
+total_btw9 <- merge(total_btw8, urb_pop_growth_long, by=c("year", "country"))
+total <- merge(total_btw9, urb_pop_per_long, by=c("year","country"))
+head(total)
+```
+
+We notice that a lot of our data has missing values (NA). We therefore decided to omit all countries that were missing data. Because we are using 22 years each country should have 22 years of data available for each variable. If the country does not meet this criteria we omit the entire country. 
+
+```{r}
+totalomit <- na.omit(total)
+head(totalomit)
+newtotal <- totalomit[totalomit$country %in% names(table(totalomit$country))[table(totalomit$country) >= 22],]
+head(newtotal)
+```
+
+One concern regarding removing so many countries: Will this cause an issue with our data since we cut so many coutries? We still have 107 countries in our data set to do predictions, or 2345 data points per variable, so we believe we still have a large enough data set to work on. In other words, removing countries like this due to data unavailability should not be an issue. 
+
+We need to do just a little more data cleaning/fixing. Due to how R reads in the data, it changed our year values to factors and therefore we need to change that back. 
+
+```{r}
+newtotal$year <- as.numeric(newtotal$year) + 1991
+summary(newtotal)
+```
+
+We then write this data to a csv file for safe keeping. 
+
+```{r}
+write.csv(newtotal, "newtotal.csv")
+```
+
+Our final data set is a complete panel data with data ranging from the years 1992 to 2013 (22 years) and 107 countries. 
+Now we begin with our Exploratory Data Analysis. Here we print out all the information we have based on all the different countries we have chosen over time.
+
+```{r}
+#Our raw data printed out
+ggplot(data=newtotal, aes(x=year, y=co2, group=country, colour = country)) + geom_line() + geom_point() + theme(axis.text.x = element_text(angle=90, vjust=.5))
+```
+
+To find out if our data is normal we print out the normal Q-Q Plots for our eleven variables.
+
+```{r}
+#Q-Q Plots
+qqnorm(newtotal$alt_energy_per_tot)
+qqline(newtotal$alt_energy_per_tot)
+
+qqnorm(newtotal$co2)
+qqline(newtotal$co2)
+
+qqnorm(newtotal$gdp)
+qqline(newtotal$gdp)
+
+qqnorm(newtotal$gdp_growth)
+qqline(newtotal$gdp_growth)
+
+qqnorm(newtotal$gdp_per_capita)
+qqline(newtotal$gdp_per_capita)
+
+qqnorm(newtotal$gdp_per_capita_growth)
+qqline(newtotal$gdp_per_capita_growth)
+
+qqnorm(newtotal$pop)
+qqline(newtotal$pop)
+
+qqnorm(newtotal$pop_den)
+qqline(newtotal$pop_den)
+
+qqnorm(newtotal$pop_growth)
+qqline(newtotal$pop_growth)
+
+qqnorm(newtotal$urb_pop_growth)
+qqline(newtotal$urb_pop_growth)
+
+qqnorm(newtotal$urb_pop_per)
+qqline(newtotal$urb_pop_per)
+
+```
+
+We also look at the histograms of the data.
+
+```{r}
+#Simple histograms split into the eleven variables
+ggplot(data=data.frame(newtotal$co2), aes(newtotal$co2)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$alt_energy_per_tot), aes(newtotal$alt_energy_per_tot)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$gdp), aes(newtotal$gdp)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$gdp_growth), aes(newtotal$gdp_growth)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$gdp_per_capita), aes(newtotal$gdp_per_capita)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$gdp_per_capita_growth), aes(newtotal$gdp_per_capita_growth)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$pop), aes(newtotal$pop)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$pop_den), aes(newtotal$pop_den)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$pop_growth), aes(newtotal$pop_growth)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$urb_pop_growth), aes(newtotal$urb_pop_growth)) +
+  geom_histogram(col='red', aes(fill=..count..))
+
+ggplot(data=data.frame(newtotal$urb_pop_per), aes(newtotal$urb_pop_per)) +
+  geom_histogram(col='red', aes(fill=..count..))
+```
+From the data we see that most of our variables are not normal. We move forward with calculating the correlation coefficients.
+Due to the non-normality of our data we use the spearman method.
+
+```{r}
+library(stats)
+library(Hmisc)
+# Correlations
+x<- newtotal[3:13]
+corr <- cor(x,x, method = "spearman")
+round(corr, 2)
+```
+
+We also visualize the correlations.
+
+```{r, fig.height=7, fig.width=7, tidy=TRUE, fig.align="center"}
+col <- colorRampPalette(c("darkblue","blue","white","red","darkred"))(200)
+corrplot(corr, method='color',addCoef.col='white',type='lower',tl.col='black',tl.srt = 45 ,col=col,diag=FALSE)
+```
+
+Notice that there are some strong correlations between a few of the variables. In order to avoid multicollinarity issues we omit one of the highly correlated variables (>0.7)
+
+Here we print scatterplots to visualize any possible correlations.
+
+```{r}
+#Simple scatterplots revealing the 9 possible correlations as shown above
+ggplot(newtotal, aes(x=gdp, y=co2)) + geom_point() + ggtitle("GDP vs CO2") 
+
+ggplot(newtotal, aes(x=gdp_growth, y=co2)) + geom_point() + ggtitle("GDP_Growth vs CO2")
+
+ggplot(newtotal, aes(x=gdp_per_capita, y=co2)) + geom_point() + ggtitle("GDP_per_Capita vs CO2")
+
+ggplot(newtotal, aes(x=gdp_per_capita_growth, y=co2)) + geom_point() + ggtitle("GDP_per_Capita_Growth vs CO2")
+
+ggplot(newtotal, aes(x=pop, y=co2)) + geom_point() + ggtitle("Population vs CO2")
+
+ggplot(newtotal, aes(x=pop_den, y=co2)) + geom_point() + ggtitle("Population_Density vs CO2")
+
+ggplot(newtotal, aes(x=pop_growth, y=co2)) + geom_point() + ggtitle("Population_Growth vs CO2")
+
+ggplot(newtotal, aes(x=urb_pop_growth, y=co2)) + geom_point() + ggtitle("Urban_Population_Growth vs CO2")
+
+ggplot(newtotal, aes(x=urb_pop_per, y=co2)) + geom_point() + ggtitle("Urban_Population_Per vs CO2")
+```
+
+No significant correlations can be observed from the scatter plots. We also check boxplots to check for outliers in our data which could prove problematic.
+
+```{r}
+boxplot(newtotal$alt_energy_per_tot, data = newtotal, main = "alt_energy_per_tot", col = "red")
+
+boxplot(newtotal$co2, data = newtotal, main = "co2", col = "red")
+
+boxplot(newtotal$gdp, data = newtotal, main = "gdp", col = "red")
+
+boxplot(newtotal$gdp_growth, data = newtotal, main = "gdp_growth", col = "red")
+
+boxplot(newtotal$gdp_per_capita, data = newtotal, main = "gdp_per_capita", col = "red")
+
+boxplot(newtotal$gdp_per_capita_growth, data = newtotal, main = "gdp_per_capita_growth", col = "red")
+
+boxplot(newtotal$pop, data = newtotal, main = "pop", col = "red")
+
+boxplot(newtotal$pop_den, data = newtotal, main = "pop_den", col = "red")
+
+boxplot(newtotal$pop_growth, data = newtotal, main = "pop_growth", col = "red")
+
+boxplot(newtotal$urb_pop_growth, data = newtotal, main = "urb_pop_growth", col = "red")
+
+boxplot(newtotal$urb_pop_per, data = newtotal, main = "urb_pop_per", col = "red")
+```
+
+Our data is not normal and we also have many outliers which may prove to be a problem. However, with using multiple regression we may still be able to successfully predict the CO2 output.
+
+We continue on with scaling all of the data for our analysis.
+
+```{r}
+newtotalScaled <- newtotal
+newtotalScaled$alt_energy_per_tot <- scale(newtotal$alt_energy_per_tot)
+newtotalScaled$gdp <- scale(newtotal$gdp)
+newtotalScaled$gdp_growth <- scale(newtotal$gdp_growth)
+newtotalScaled$gdp_per_capita <- scale(newtotal$gdp_per_capita)
+newtotalScaled$gdp_per_capita_growth <- scale(newtotal$gdp_per_capita_growth)
+newtotalScaled$pop <- scale(newtotal$pop)
+newtotalScaled$pop_den <- scale(newtotal$pop_den)
+newtotalScaled$pop_growth <- scale(newtotal$pop_growth)
+newtotalScaled$urb_pop_growth <- scale(newtotal$urb_pop_growth)
+newtotalScaled$urb_pop_per <- scale(newtotal$urb_pop_per)
+summary(newtotalScaled)
+head(newtotalScaled)
+```
+
+Then, as mentioned above, we remove gdp_growth, urban population growth, and urban population percentage of the whole population due to a strong correlation with another. This fixes our multicollinearity problem.
+
+```{r}
+newtotalScaled <- newtotalScaled[,c(-6,-12,-13)]
+head(newtotalScaled)
+```
+
+We then ran bestglm on all of the variables using three different methods to see which ones we should use for our prediction. We used both forward and backward with both information criteria AIC and BIC.
+
+
+```{r}
+newtotalglm <- newtotalScaled[c(3,5:10,4)]
+bglm <- bestglm(Xy=newtotalglm, IC="AIC",method = "forward")
+bglm$BestModels
+```
+
+```{r}
+bglm <- bestglm(Xy=newtotalglm, IC="AIC",method = "backward")
+bglm$BestModels
+```
+
+```{r}
+bglm <- bestglm(Xy=newtotalglm, IC="BIC",method = "forward")
+bglm$BestModels
+```
+
+```{r}
+bglm <- bestglm(Xy=newtotalglm, IC="BIC",method = "backward")
+bglm$BestModels
+```
+
+Also to visualize the best model selection we use regsubsets using the Adjusted R squared, Cp, and BIC.
+
+```{r}
+reg.best <- regsubsets(co2~. -year - country, data =newtotalScaled)
+plot(reg.best, scale = "adjr2", main = "Adjusted R^2")
+summary(reg.best)
+```
+
+```{r}
+plot(reg.best, scale = "Cp", main = "Cp")
+summary(reg.best)
+```
+
+```{r}
+plot(reg.best, scale = "bic", main = "BIC")
+summary(reg.best)
+```
+
+We see that we end up with two different models to check. The Adjusted R squared regression sublot and Cp regression subplot give the same model. We will then take the best one from these options. Next, we seperate out our data into train and test data. Our models are separated by 75% for training to 25% for testing.
+
+```{r}
+newtotal_train <- newtotalScaled[1:1782, ]
+newtotal_co2 <- newtotalScaled[1783:2354, 4]
+test_co2 <- newtotalScaled[1783:2354, -4]
+
+head(newtotal_train)
+head(newtotal_co2)
+head(test_co2)
+```
+
+Since out data is panel data, we use PLM to run our regression. PLM is a panel data estimator that applies a linear model on transformed data. We use it to create our two models.
+
+```{r}
+model1 <- plm(co2~alt_energy_per_tot+gdp+gdp_per_capita+pop+pop_den+pop_growth, data = newtotal_train, index=c("country", "year"), model ="random", effect="time")
+model2 <- plm(co2~alt_energy_per_tot+gdp+gdp_per_capita+pop, data = newtotal_train, index=c("country", "year"), model="random", effect="time")
+```
+
+We get the summary of the data.
+
+```{r}
+summary(model1)
+summary(model2)
+```
+
+We then need to test our models. Therefore, we apply our models on our test data.
+
+```{r}
+predict.model1 <- predict(model1,test_co2)
+predict.model2 <- predict(model2,test_co2)
+
+model1.diff <- predict.model1 - newtotal_co2
+model2.diff <- predict.model2 - newtotal_co2
+```
+
+And we compare them to the actual values by creating a data frame of the actual values, predicted values and the residuals from each of the models. 
+
+```{r}
+compare <- data.frame(predict.model1, model1.diff, predict.model2, model2.diff, newtotal_co2)
+head(compare)
+```
+
+To see how good our fit performed we calculate the root mean square.
+
+```{r}
+MSE1 <- mean((compare$predict.model1-compare$newtotal_co2)^2)
+RMSE1 <- sqrt(MSE1)
+RMSE1
+
+MSE2 <- mean((compare$predict.model2-compare$newtotal_co2)^2)
+RMSE2 <- sqrt(MSE2)
+RMSE2
+```
+
+Our RMSE is pretty high for our data, so we wondered if we could get it lower by adding one more variable based on development. Therefore we seperated our countries into two groups, G20 (essentially seperating out the industrialized and emerging economies) and the Rest of the World (ROW). We chose these since the developned and emerging economies may be more related to one another while the rest of the world may be related more to each other. In other words, it is safe to assume these developed and developing countries form the majority of outliers in our data set.  
+
+```{r}
+newtotalScaled$group <- ifelse(newtotalScaled$country == "ARG" ,"G20", ifelse(newtotalScaled$country == "FRA" ,"G20", ifelse(newtotalScaled$country == "DEU","G20", ifelse(newtotalScaled$country == "IND" ,"G20", ifelse(newtotalScaled$country == "IDN" ,"G20", ifelse(newtotalScaled$country == "ITA" ,"G20", ifelse(newtotalScaled$country == "JPN" ,"G20", ifelse(newtotalScaled$country == "KOR" ,"G20", ifelse(newtotalScaled$country == "MEX" ,"G20", ifelse(newtotalScaled$country == "RUS","G20", ifelse(newtotalScaled$country == "SAU","G20", ifelse(newtotalScaled$country == "ZAF", "G20", ifelse(newtotalScaled$country == "TUR","G20", ifelse(newtotalScaled$country == "GBR" ,"G20", ifelse(newtotalScaled$country == "AUS", "G20", ifelse(newtotalScaled$country == "BRA", "G20", ifelse(newtotalScaled$country == "CAN", "G20", ifelse(newtotalScaled$country == "CHN", "G20", "ROW"))))))))))))))))))
+
+newtotal$group <- ifelse(newtotal$country == "ARG" ,"G20", ifelse(newtotal$country == "FRA" ,"G20", ifelse(newtotal$country == "DEU","G20", ifelse(newtotal$country == "IND" ,"G20", ifelse(newtotal$country == "IDN" ,"G20", ifelse(newtotal$country == "ITA" ,"G20", ifelse(newtotal$country == "JPN" ,"G20", ifelse(newtotal$country == "KOR" ,"G20", ifelse(newtotal$country == "MEX" ,"G20", ifelse(newtotal$country == "RUS","G20", ifelse(newtotal$country == "SAU","G20", ifelse(newtotal$country == "ZAF", "G20", ifelse(newtotal$country == "TUR","G20", ifelse(newtotal$country == "GBR" ,"G20", ifelse(newtotal$country == "AUS", "G20", ifelse(newtotal$country == "BRA", "G20", ifelse(newtotal$country == "CAN", "G20", ifelse(newtotal$country == "CHN", "G20", "ROW"))))))))))))))))))
+
+row <- split(newtotalScaled, newtotalScaled$group)[["ROW"]] #All the BRICS data
+g20 <- split(newtotalScaled, newtotalScaled$group)[["G20"]] #All G7 data
+newtotalScaled$group <- as.factor(newtotalScaled$group)
+head(newtotalScaled)
+```
+
+We once again run regsubsets on the data to see what variables our model should include.
+
+```{r}
+#This is essentially best fit
+reg.besttest <- regsubsets(co2~.-year-country, data=newtotalScaled)
+plot(reg.besttest, scale="adjr2", main="Adjusted R^2 TEST")
+plot(reg.besttest, scale="Cp", main="Cp Test")
+plot(reg.besttest, scale="bic", main="BIC Test")
+```
+
+We split the data once again into training and testing sets.
+
+```{r}
+#Have to create training data
+newtotal_trainT <- newtotalScaled[1:1782, ]
+newtotal_co2T <- newtotalScaled[1782:2354, 4]
+test_co2T <- newtotalScaled[1782:2354,-4]
+```
+
+```{r}
+head(newtotal_trainT)
+```
+
+And we create our models.
+
+```{r}
+model1T <- plm(co2~alt_energy_per_tot+gdp+gdp_per_capita+pop+pop_den+pop_growth+group, data = newtotal_trainT, index=c("country", "year"), model="random", effect="time")
+model2T <- plm(co2~alt_energy_per_tot+gdp+gdp_per_capita+pop+pop_growth+group, data = newtotal_trainT, index=c("country", "year"), model="random", effect="time")
+```
+
+
+```{r}
+summary(model1T)
+summary(model2T)
+```
+
+Once again, we test our model with the training data set. 
+
+```{r}
+predict.model1T <- predict(model1T,test_co2T)
+predict.model2T <- predict(model2T,test_co2T)
+
+model1T.diff <- predict.model1T - newtotal_co2T
+model2T.diff <- predict.model2T - newtotal_co2T
+```
+
+And we do our comparison.
+
+```{r}
+compare <- data.frame(predict.model1T, model1T.diff, predict.model2T, model2T.diff, newtotal_co2T)
+head(compare)
+```
+
+```{r}
+MSE1 <- mean((compare$predict.model1T-compare$newtotal_co2T)^2)
+RMSE1 <- sqrt(MSE1)
+RMSE1
+
+MSE2 <- mean((compare$predict.model2T-compare$newtotal_co2T)^2)
+RMSE2 <- sqrt(MSE2)
+RMSE2
+```
+
+We did not get much of an improvement. But, let's look at out our residuals to see if there might be some outliers. We can do this by scatter plots, histograms, and boxplots.
+
+```{r}
+plot(model1T.diff)
+plot(model2T.diff)
+ggplot(data=data.frame(model1T.diff), aes(model1T.diff)) +
+  geom_histogram(col='red', aes(fill=..count..))
+ggplot(data=data.frame(model2T.diff), aes(model2T.diff)) +
+  geom_histogram(col='red', aes(fill=..count..))
+```
+
+```{r}
+ggplot(data = data.frame(model1T.diff), aes(x="", y=model1T.diff)) +
+  geom_boxplot(col="red")
+ggplot(data = data.frame(model2T.diff), aes(x="", y=model2T.diff)) +
+  geom_boxplot(col="red")
+```
+
+We see that we have a lot of outliers, but really 6 extreme outliers. We then went back to our data and determined all these 6 outliers belong to one country. This country happens to be Trinidad and Tobago (TTO). What happens to our model when we remove them? 
+
+```{r}
+newtotalScaled_TTO <- newtotalScaled[newtotalScaled$country!='TTO',]
+```
+
+```{r}
+head(newtotalScaled_TTO)
+```
+
+We repeat our process with the training and testing data sets.
+
+```{r}
+#Have to create training data
+newtotal_trainT_TTO <- newtotalScaled_TTO[1:1760, ]
+newtotal_co2T_TTO <- newtotalScaled_TTO[1761:2332, 4]
+test_co2T_TTO <- newtotalScaled_TTO[1761:2332,-4]
+```
+
+```{r}
+head(newtotal_trainT_TTO)
+```
+
+We again repeeat our process to create our models.
+
+```{r}
+model1T_TTO <- plm(co2~alt_energy_per_tot+gdp+gdp_per_capita+pop+pop_den+pop_growth+group, data = newtotal_trainT_TTO, index=c("country", "year"), model="random", effect="time")
+model2T_TTO <- plm(co2~alt_energy_per_tot+gdp+gdp_per_capita+pop+pop_growth+group, data = newtotal_trainT_TTO, index=c("country", "year"), model="random", effect="time")
+```
+
+
+```{r}
+summary(model1T_TTO)
+summary(model2T_TTO)
+```
+
+```{r}
+predict.model1T_TTO <- predict(model1T_TTO,test_co2T_TTO)
+predict.model2T_TTO <- predict(model2T_TTO,test_co2T_TTO)
+model1T.diff_TTO <- newtotal_co2T_TTO - predict.model1T_TTO
+model2T.diff_TTO <- newtotal_co2T_TTO - predict.model2T_TTO
+```
+
+```{r}
+head(test_co2T_TTO)
+```
+
+And get our camparison.
+
+```{r}
+compare_TTO <- data.frame(predict.model1T_TTO, model1T.diff_TTO, predict.model2T_TTO, model2T.diff_TTO, newtotal_co2T_TTO)
+head(compare_TTO)
+```
+
+```{r}
+MSE1_TTO <- mean((compare_TTO$predict.model1T_TTO-compare_TTO$newtotal_co2T_TTO)^2)
+RMSE1_TTO <- sqrt(MSE1_TTO)
+RMSE1_TTO
+
+MSE2_TTO <- mean((compare_TTO$predict.model2T_TTO-compare_TTO$newtotal_co2T_TTO)^2)
+RMSE2_TTO <- sqrt(MSE2_TTO)
+RMSE2_TTO
+```
+
+Now we see our RMSE dropped by a good amount. It is still not the best, but it is better. We can once again check what our residuals look like.
+
+```{r}
+plot(model1T.diff_TTO)
+plot(model2T.diff_TTO)
+ggplot(data=data.frame(model1T.diff_TTO), aes(model1T.diff_TTO)) +
+  geom_histogram(col='red', aes(fill=..count..))
+ggplot(data=data.frame(model2T.diff_TTO), aes(model2T.diff_TTO)) +
+  geom_histogram(col='red', aes(fill=..count..))
+```
+
+```{r}
+ggplot(data = data.frame(model1T.diff_TTO), aes(x="", y=model1T.diff_TTO)) +
+  geom_boxplot(col="red")
+ggplot(data = data.frame(model2T.diff_TTO), aes(x="", y=model2T.diff_TTO)) +
+  geom_boxplot(col='red')
+```
+
+We find after removing Trinidad and Tobago, we have a much better residual plot. Not the best but definitely better than before. We then want to visualize our residuals. We do this by plotting the residuals versus the different variables. We do this using the variables actual values instead of the scaled values.
+
+```{r}
+d <- newtotal
+d_TTO <- d[d$country!='TTO',]
+d_TTO <- d_TTO[1761:2332,]
+d_TTO$predicted <- predict.model2T_TTO
+d_TTO$residuals <- model2T.diff_TTO
+head(d_TTO)
+```
+
+The plots below represent the residuals by showing the variables vs co2, plotting both the actual values and our predicted values connected. The colored points are the actual values while the white dots are our predicted values. Red shows that we under predicted while the blue shows an over prediction.
+
+```{r}
+ggplot(d_TTO, aes(x=gdp, y=co2)) +
+  geom_segment(aes(xend=gdp, yend=predicted), alpha=.2) +
+  geom_point(aes(color=residuals)) +
+  scale_color_gradient2(low="blue", mid="white", high="red") +
+  guides(color=FALSE) +
+  geom_point(aes(y=predicted), shape=1) +
+  theme_bw()
+```
+
+```{r}
+ggplot(d_TTO, aes(x=alt_energy_per_tot, y=co2)) +
+  geom_segment(aes(xend=alt_energy_per_tot, yend=predicted), alpha=.2) +
+  geom_point(aes(color=residuals)) +
+  scale_color_gradient2(low="blue", mid="white", high="red") +
+  guides(color=FALSE) +
+  geom_point(aes(y=predicted), shape=1) +
+  theme_bw()
+```
+
+```{r}
+ggplot(d_TTO, aes(x=gdp_per_capita, y=co2)) +
+  geom_segment(aes(xend=gdp_per_capita, yend=predicted), alpha=.2) +
+  geom_point(aes(color=residuals)) +
+  scale_color_gradient2(low="blue", mid="white", high="red") +
+  guides(color=FALSE) +
+  geom_point(aes(y=predicted), shape=1) +
+  theme_bw()
+```
+
+```{r}
+ggplot(d_TTO, aes(x=pop, y=co2)) +
+  geom_segment(aes(xend=pop, yend=predicted), alpha=.2) +
+  geom_point(aes(color=residuals)) +
+  scale_color_gradient2(low="blue", mid="white", high="red") +
+  guides(color=FALSE) +
+  geom_point(aes(y=predicted), shape=1) +
+  theme_bw()
+```
+
+```{r}
+ggplot(d_TTO, aes(x=pop_growth, y=co2)) +
+  geom_segment(aes(xend=pop_growth, yend=predicted), alpha=.2) +
+  geom_point(aes(color=residuals)) +
+  scale_color_gradient2(low="red", mid="white", high="blue") +
+  guides(color=FALSE) +
+  geom_point(aes(y=predicted), shape=1) +
+  theme_bw()
+```
+
+```{r}
+ggplot(d_TTO, aes(x=group, y=co2)) +
+  geom_segment(aes(xend=group, yend=predicted), alpha=.2) +
+  geom_point(aes(color=residuals)) +
+  scale_color_gradient2(low="blue", mid="white", high="red") +
+  guides(color=FALSE) +
+  geom_point(aes(y=predicted), shape=1) +
+  theme_bw()
+```
+
+The residual plot by group above indicates an over prediction for the industrialised and emerging economies while an overall under prediction for the rest of the world, further implying the necessity to split our countries based on their level of development. 
+
+We see that our residuals are still quite large, but our predictions have gotten better. Improvements would include more variables to be included. Most of our variables were similar markers revolving around population, gdp, and alternative energy. We might want to divisify this portfolio to other factors such as number of vehicles, number of power plants, percentage of farm land, and more. The issue with these variables is the amount of data available. Unfortunately, a lot of this data is incomplete. Hopefully in the fututre we will have access to more complete data.
